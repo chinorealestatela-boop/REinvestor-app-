@@ -15,6 +15,9 @@ export const env = {
   twilioAccountSid: process.env.TWILIO_ACCOUNT_SID ?? "",
   twilioAuthToken: process.env.TWILIO_AUTH_TOKEN ?? "",
   twilioFromNumber: process.env.TWILIO_FROM_NUMBER ?? "",
+  // Neighborhood enrichment (optional — ZIP-code defaults are used without these)
+  greatSchoolsApiKey: process.env.GREATSCHOOLS_API_KEY ?? "",
+  googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY ?? "",
   // Investor contact (who gets alerts + daily reports)
   investorEmail: process.env.INVESTOR_EMAIL ?? "",
   investorPhone: process.env.INVESTOR_PHONE ?? "",

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { scanRentcast } from "../../lib/sources/rentcast";
+import { enrichProperties } from "../../lib/sources/neighborhood";
 import { buildScoredDeals, isAlertDeal } from "../../lib/deals";
 import { saveScoredDeals } from "../../lib/db/deals-repo";
 import { isRentcastConfigured, isSupabaseConfigured, isSmsConfigured } from "../../lib/env";
@@ -33,13 +34,16 @@ export async function POST(req: NextRequest) {
       limit?: number;
     };
 
-    const properties = await scanRentcast({
+    const rawProperties = await scanRentcast({
       city: body.city ?? "Las Vegas",
       state: body.state ?? "NV",
       zipCode: body.zipCode,
       maxPrice: body.maxPrice ?? 500_000,
       limit: body.limit ?? 20,
     });
+
+    // Enrich each property with real crime, school, flood zone, and growth data.
+    const properties = await enrichProperties(rawProperties);
 
     const deals = buildScoredDeals(properties);
     await saveScoredDeals(deals);

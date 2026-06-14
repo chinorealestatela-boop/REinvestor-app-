@@ -217,13 +217,24 @@ create table rehab_line_items (
 
 -- ---------- Portfolio (the investor's own deals) ---------------------------
 create table portfolio_deals (
-  id            text primary key,
-  property_id   text references properties(id),
-  stage         text not null,   -- offer | under_contract | rehab | listed | sold
-  purchase_price numeric(12,2),
-  rehab_spent   numeric(12,2),
-  sale_price    numeric(12,2),
-  realized_profit numeric(12,2),
-  opened_at     timestamptz not null default now(),
-  closed_at     timestamptz
+  id               text primary key,
+  property_address text not null,
+  property_city    text not null default '',
+  property_state   text not null default 'NV',
+  property_zip     text not null default '',
+  property_type    text not null default 'single_family',
+  beds             int default 0,
+  baths            numeric(3,1) default 0,
+  sqft             int default 0,
+  stage            text not null,   -- offer | under_contract | rehab | listed | sold
+  purchase_price   numeric(12,2) default 0,
+  rehab_budget     numeric(12,2) default 0,
+  rehab_spent      numeric(12,2) default 0,
+  arv              numeric(12,2) default 0,
+  sale_price       numeric(12,2),
+  listing_date     date,
+  closing_date     date,
+  notes            text default '',
+  opened_at        timestamptz not null default now(),
+  closed_at        timestamptz
 );

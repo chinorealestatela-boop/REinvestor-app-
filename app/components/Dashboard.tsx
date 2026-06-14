@@ -15,10 +15,11 @@ import DealMap from "./DealMap";
 import DealDetail from "./DealDetail";
 import BuyersPanel from "./BuyersPanel";
 import BuyerForm from "./BuyerForm";
+import PortfolioPanel from "./PortfolioPanel";
 import { currency } from "../lib/format";
 
 type View = "grid" | "list" | "map";
-type Tab = "deals" | "buyers" | "report";
+type Tab = "deals" | "buyers" | "portfolio" | "report";
 type StrategyFilter = "all" | "flip" | "wholesale" | "rental_hold";
 
 export default function Dashboard({
@@ -164,7 +165,7 @@ export default function Dashboard({
         </div>
 
         <nav className="ml-6 hidden md:flex items-center gap-1">
-          {(["deals", "buyers", "report"] as Tab[]).map((t) => (
+          {(["deals", "buyers", "portfolio", "report"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -174,7 +175,7 @@ export default function Dashboard({
                 color: tab === t ? "var(--foreground)" : "var(--muted)",
               }}
             >
-              {t === "report" ? "Daily Report" : t === "buyers" ? "Buyer Network" : "Deals"}
+              {t === "report" ? "Daily Report" : t === "buyers" ? "Buyer Network" : t === "portfolio" ? "Portfolio" : "Deals"}
             </button>
           ))}
         </nav>
@@ -198,18 +199,18 @@ export default function Dashboard({
       </header>
 
       {/* Mobile tabs */}
-      <div className="md:hidden flex gap-1 px-4 pt-3">
-        {(["deals", "buyers", "report"] as Tab[]).map((t) => (
+      <div className="md:hidden flex gap-1 px-4 pt-3 overflow-x-auto">
+        {(["deals", "buyers", "portfolio", "report"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className="flex-1 px-3 py-1.5 rounded-lg text-xs font-medium capitalize"
+            className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium capitalize"
             style={{
               background: tab === t ? "var(--surface-2)" : "transparent",
               color: tab === t ? "var(--foreground)" : "var(--muted)",
             }}
           >
-            {t}
+            {t === "portfolio" ? "Portfolio" : t === "report" ? "Report" : t}
           </button>
         ))}
       </div>
@@ -369,6 +370,8 @@ export default function Dashboard({
             onDelete={deleteBuyer}
           />
         )}
+
+        {tab === "portfolio" && <PortfolioPanel />}
 
         {tab === "report" && <DailyReport summary={summary} deals={dealsWithMatches} />}
 
