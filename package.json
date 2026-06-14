@@ -1,5 +1,5 @@
 {
-  "name": "fb-ad-creator",
+  "name": "dealradar",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -10,7 +10,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "latest",
     "@tailwindcss/postcss": "^4.2.2",
-    "facebook-nodejs-business-sdk": "latest",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"

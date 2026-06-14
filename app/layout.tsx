@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Facebook Ad Creator",
-  description: "Internal agency tool for creating Facebook ads",
+  title: "DealRadar — AI Real Estate Investment Platform",
+  description:
+    "AI-driven acquisition platform that finds undervalued residential properties before other investors.",
 };
 
 export default function RootLayout({
