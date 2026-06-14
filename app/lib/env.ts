@@ -8,6 +8,16 @@ export const env = {
   supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
   rentcastApiKey: process.env.RENTCAST_API_KEY ?? "",
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
+  // Email delivery (Resend — resend.com, free tier available)
+  resendApiKey: process.env.RESEND_API_KEY ?? "",
+  fromEmail: process.env.FROM_EMAIL ?? "DealRadar <deals@dealradar.app>",
+  // SMS alerts (Twilio)
+  twilioAccountSid: process.env.TWILIO_ACCOUNT_SID ?? "",
+  twilioAuthToken: process.env.TWILIO_AUTH_TOKEN ?? "",
+  twilioFromNumber: process.env.TWILIO_FROM_NUMBER ?? "",
+  // Investor contact (who gets alerts + daily reports)
+  investorEmail: process.env.INVESTOR_EMAIL ?? "",
+  investorPhone: process.env.INVESTOR_PHONE ?? "",
 };
 
 export function isSupabaseConfigured(): boolean {
@@ -16,4 +26,18 @@ export function isSupabaseConfigured(): boolean {
 
 export function isRentcastConfigured(): boolean {
   return Boolean(env.rentcastApiKey);
+}
+
+export function isEmailConfigured(): boolean {
+  return Boolean(env.resendApiKey && env.investorEmail);
+}
+
+export function isSmsConfigured(): boolean {
+  return Boolean(
+    env.twilioAccountSid && env.twilioAuthToken && env.twilioFromNumber && env.investorPhone
+  );
+}
+
+export function isCmaConfigured(): boolean {
+  return Boolean(env.anthropicApiKey && env.resendApiKey);
 }

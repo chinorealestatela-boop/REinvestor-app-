@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import ScoreRing from "./ScoreRing";
 import type { DealWithMatches } from "../lib/deals";
+import type { Buyer } from "../lib/types";
 import { TIER_LABEL, SCORE_WEIGHTS } from "../lib/scoring";
 import {
   currency,
@@ -18,6 +20,30 @@ export default function DealDetail({
   deal: DealWithMatches | null;
   onClose: () => void;
 }) {
+  const [cmaSending, setCmaSending] = useState<string | null>(null); // buyerId being sent
+  const [cmaStatus, setCmaStatus] = useState<Record<string, string>>({}); // buyerId -> "sent" | error
+
+  async function sendCma(buyer: Buyer) {
+    if (!deal) return;
+    setCmaSending(buyer.id);
+    try {
+      const res = await fetch("/api/cma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dealId: deal.property.id, buyerId: buyer.id }),
+      });
+      const json = await res.json();
+      setCmaStatus((prev) => ({
+        ...prev,
+        [buyer.id]: res.ok ? "sent" : (json.error ?? "failed"),
+      }));
+    } catch {
+      setCmaStatus((prev) => ({ ...prev, [buyer.id]: "failed" }));
+    } finally {
+      setCmaSending(null);
+    }
+  }
+
   if (!deal) return null;
   const { property, analysis, score } = deal;
 
@@ -139,36 +165,56 @@ export default function DealDetail({
           {/* Buyer matches */}
           {deal.buyerMatches.length > 0 && (
             <Section title={`Buyer Matches (${deal.buyerMatches.length})`}>
-              {deal.buyerMatches.map((m) => (
-                <div
-                  key={m.buyer.id}
-                  className="flex items-center justify-between rounded-lg px-3 py-2 mb-2"
-                  style={{ background: "var(--surface-2)" }}
-                >
-                  <div>
-                    <div className="text-sm font-medium text-white">
-                      {m.buyer.name}
-                      {m.buyer.company ? ` · ${m.buyer.company}` : ""}
+              {deal.buyerMatches.map((m) => {
+                const status = cmaStatus[m.buyer.id];
+                const isSending = cmaSending === m.buyer.id;
+                return (
+                  <div
+                    key={m.buyer.id}
+                    className="flex items-center justify-between rounded-lg px-3 py-2 mb-2"
+                    style={{ background: "var(--surface-2)" }}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-white">
+                        {m.buyer.name}
+                        {m.buyer.company ? ` · ${m.buyer.company}` : ""}
+                      </div>
+                      <div className="text-xs" style={{ color: "var(--muted)" }}>
+                        {m.matchedOn.slice(0, 2).join(" · ")}
+                      </div>
                     </div>
-                    <div className="text-xs" style={{ color: "var(--muted)" }}>
-                      {m.matchedOn.slice(0, 2).join(" · ")}
+                    <div className="flex items-center gap-2 pl-2 shrink-0">
+                      <div className="text-right">
+                        <div
+                          className="text-sm font-bold"
+                          style={{ color: m.matchScore >= 70 ? "#60a5fa" : "var(--muted)" }}
+                        >
+                          {m.matchScore}%
+                        </div>
+                        <div className="text-[10px]" style={{ color: "var(--muted)" }}>
+                          match
+                        </div>
+                      </div>
+                      {m.matchScore >= 70 && (
+                        <button
+                          onClick={() => sendCma(m.buyer)}
+                          disabled={isSending || status === "sent"}
+                          className="px-2 py-1 rounded text-[11px] font-semibold disabled:opacity-60"
+                          style={{
+                            background: status === "sent" ? "rgba(16,185,129,0.15)" : "rgba(59,130,246,0.15)",
+                            color: status === "sent" ? "#10b981" : "#60a5fa",
+                            border: `1px solid ${status === "sent" ? "rgba(16,185,129,0.3)" : "rgba(59,130,246,0.3)"}`,
+                          }}
+                        >
+                          {isSending ? "Sending…" : status === "sent" ? "✓ Sent" : status ? "Retry" : "Send CMA"}
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div
-                      className="text-sm font-bold"
-                      style={{ color: m.matchScore >= 70 ? "#60a5fa" : "var(--muted)" }}
-                    >
-                      {m.matchScore}%
-                    </div>
-                    <div className="text-[10px]" style={{ color: "var(--muted)" }}>
-                      match
-                    </div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
-                In production, a strong match (≥70%) auto-generates a CMA and emails it to the buyer.
+                Strong matches (≥70%) can receive an AI-generated CMA email. Requires ANTHROPIC_API_KEY + RESEND_API_KEY.
               </p>
             </Section>
           )}

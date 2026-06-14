@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { scanRentcast } from "../../lib/sources/rentcast";
-import { buildScoredDeals } from "../../lib/deals";
+import { buildScoredDeals, isAlertDeal } from "../../lib/deals";
 import { saveScoredDeals } from "../../lib/db/deals-repo";
-import { isRentcastConfigured, isSupabaseConfigured } from "../../lib/env";
+import { isRentcastConfigured, isSupabaseConfigured, isSmsConfigured } from "../../lib/env";
+import { sendDealAlert } from "../../lib/sms";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -42,6 +43,14 @@ export async function POST(req: NextRequest) {
 
     const deals = buildScoredDeals(properties);
     await saveScoredDeals(deals);
+
+    // Fire SMS alerts for elite deals (best-effort, non-blocking on error).
+    if (isSmsConfigured()) {
+      const alertDeals = deals.filter((d) => isAlertDeal(d) && d.score.total >= 90);
+      for (const deal of alertDeals.slice(0, 3)) {
+        sendDealAlert(deal).catch(() => null);
+      }
+    }
 
     return NextResponse.json({
       scanned: properties.length,

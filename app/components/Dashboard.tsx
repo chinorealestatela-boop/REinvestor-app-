@@ -371,6 +371,7 @@ export default function Dashboard({
         )}
 
         {tab === "report" && <DailyReport summary={summary} deals={dealsWithMatches} />}
+
       </div>
 
       <DealDetail deal={selected} onClose={() => setSelected(null)} />
@@ -411,13 +412,54 @@ function DailyReport({
   deals: DealWithMatches[];
 }) {
   const top = deals.slice(0, 3);
+  const [sending, setSending] = useState(false);
+  const [reportStatus, setReportStatus] = useState<string | null>(null);
+
+  async function deliverReport() {
+    setSending(true);
+    setReportStatus(null);
+    try {
+      const res = await fetch("/api/report", { method: "POST" });
+      const json = await res.json();
+      if (res.ok) {
+        const parts = Object.entries(json.results as Record<string, string>)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(" · ");
+        setReportStatus(`Delivered — ${parts}`);
+      } else {
+        setReportStatus(json.error ?? "Delivery failed.");
+      }
+    } catch {
+      setReportStatus("Delivery request failed.");
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="card p-5">
-        <h2 className="text-base font-semibold text-white mb-1">Las Vegas Daily Market Report</h2>
-        <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
-          Generated {new Date().toLocaleDateString()} · Morning scan
-        </p>
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-base font-semibold text-white mb-1">Las Vegas Daily Market Report</h2>
+            <p className="text-xs" style={{ color: "var(--muted)" }}>
+              Generated {new Date().toLocaleDateString()} · Morning scan
+            </p>
+          </div>
+          <button
+            onClick={deliverReport}
+            disabled={sending}
+            className="shrink-0 px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-60"
+            style={{ background: "var(--accent)" }}
+          >
+            {sending ? "Sending…" : "Send Report"}
+          </button>
+        </div>
+        {reportStatus && (
+          <div className="text-xs mb-4 p-2 rounded-lg" style={{ background: "var(--surface-2)", color: "var(--muted)" }}>
+            {reportStatus}
+          </div>
+        )}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Stat label="Active Deals Tracked" value={String(summary.totalDeals)} />
           <Stat label="Avg Deal Score" value={String(summary.avgScore)} />
