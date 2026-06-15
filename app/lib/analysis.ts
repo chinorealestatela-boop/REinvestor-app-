@@ -119,23 +119,44 @@ export function inferRehabLevel(property: Property): RehabLevel {
   return age > 25 ? "moderate" : "cosmetic";
 }
 
-// ARV = the resale value after a cosmetic refresh. We lift the best comps to
-// the top of the local range rather than just adding rehab dollars.
-export function estimateArv(property: Property, marketValue: number): number {
-  const usable = property.comps.filter((c) => c.sqft > 0);
-  if (usable.length === 0) return Math.round(marketValue * 1.08);
+// Uplift over market value a cosmetic/moderate flip adds in Las Vegas.
+// These are conservative — real upside only comes from buying below market.
+const ARV_UPLIFT: Record<RehabLevel, number> = {
+  cosmetic: 1.08,  // fresh paint, flooring, fixtures
+  moderate: 1.14,  // kitchen/bath refresh + cosmetics
+  heavy:    1.22,  // full interior gut
+  gut:      1.30,  // structural + full gut
+};
 
-  // ARV anchored to the strongest (highest $/sqft) recent comps — what a
-  // renovated version of this house resells for.
+// ARV = median comp $/sqft × sqft, then apply a rehab-level uplift,
+// capped so it can't stray more than the uplift ceiling above market value.
+// Using median (not top-quartile) prevents outlier comps from inflating the
+// number — Las Vegas comps from RentCast often include remodeled/upgraded
+// sales that aren't comparable to a cosmetic fixer.
+export function estimateArv(
+  property: Property,
+  marketValue: number,
+  rehabLevel: RehabLevel = "cosmetic"
+): number {
+  const usable = property.comps.filter((c) => c.sqft > 0);
+  const uplift = ARV_UPLIFT[rehabLevel];
+
+  if (usable.length === 0) return Math.round(marketValue * uplift);
+
+  // Median $/sqft
   const perSqft = usable
     .map((c) => c.soldPrice / c.sqft)
-    .sort((a, b) => b - a);
-  const topQuartile =
-    perSqft.slice(0, Math.max(1, Math.ceil(perSqft.length / 4)));
-  const arvPerSqft =
-    topQuartile.reduce((s, v) => s + v, 0) / topQuartile.length;
+    .sort((a, b) => a - b);
+  const mid = Math.floor(perSqft.length / 2);
+  const medianPerSqft =
+    perSqft.length % 2 === 0
+      ? (perSqft[mid - 1] + perSqft[mid]) / 2
+      : perSqft[mid];
 
-  return Math.round(Math.max(arvPerSqft * property.sqft, marketValue));
+  const compArv = medianPerSqft * property.sqft;
+  // Cap: ARV can't exceed market value × uplift ceiling
+  const cap = marketValue * uplift;
+  return Math.round(Math.min(Math.max(compArv, marketValue), cap));
 }
 
 export function estimateRehabCost(
@@ -159,7 +180,7 @@ export function analyzeProperty(
 ): DealAnalysis {
   const estimatedMarketValue = estimateMarketValue(property);
   const rehabLevel = inferRehabLevel(property);
-  const estimatedArv = estimateArv(property, estimatedMarketValue);
+  const estimatedArv = estimateArv(property, estimatedMarketValue, rehabLevel);
   const estimatedRehabCost = estimateRehabCost(property, rehabLevel, profile);
 
   const purchasePrice = property.listPrice;
