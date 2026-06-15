@@ -1,13 +1,17 @@
 // ============================================================================
 // RentCast data source
 // ============================================================================
-// Fetches active for-sale listings and comparable sales from the RentCast API
-// and maps them into our Property model so the analysis/scoring engines can
-// run unchanged. Docs: https://developers.rentcast.io
+// Fetches active for-sale listings from the RentCast API, pre-filters them
+// by buy-box criteria, then fetches AVM + comps only for survivors.
 //
-// Neighborhood-intelligence fields (crime/school/flood) are set to neutral
-// defaults here and enriched by dedicated sources (FBI crime, GreatSchools,
-// FEMA) in a later step.
+// Request budget per scan (default 15 listings fetched, top 10 enriched):
+//   1  GET /listings/sale
+//   ≤10 GET /avm/value  (1 per survivor — includes comps)
+//   ─────────────────────────────────────────────
+//   ≤11 total  (vs 41 before — rent calls removed; pre-filter added)
+//
+// Rent estimates come from neighborhood enrichment ZIP tables, not RentCast,
+// since this investor is flip-focused (not buy-and-hold).
 
 import type { Property, PropertyType, Comp, PriceHistoryEntry } from "../types";
 import { env, isRentcastConfigured } from "../env";
@@ -71,9 +75,7 @@ interface RentcastComparable {
   distance?: number;
 }
 
-function mapHistory(
-  listing: RentcastListing
-): PriceHistoryEntry[] {
+function mapHistory(listing: RentcastListing): PriceHistoryEntry[] {
   const out: PriceHistoryEntry[] = [];
   const hist = listing.history ?? {};
   for (const key of Object.keys(hist).sort()) {
@@ -101,7 +103,10 @@ function mapHistory(
   return out;
 }
 
-async function fetchComps(
+// 1 request: AVM + comps bundled in a single call.
+// Rent is intentionally excluded — this investor is flip-focused and rent
+// estimates come from ZIP-code tables in neighborhood enrichment instead.
+async function fetchAvm(
   address: string
 ): Promise<{ comps: Comp[]; marketValue: number | null }> {
   try {
@@ -129,26 +134,11 @@ async function fetchComps(
   }
 }
 
-async function fetchRent(address: string): Promise<number> {
-  try {
-    const url = `${BASE}/avm/rent/long-term?address=${encodeURIComponent(address)}`;
-    const res = await fetch(url, { headers: headers() });
-    if (!res.ok) return 0;
-    const data = (await res.json()) as { rent?: number };
-    return data.rent ?? 0;
-  } catch {
-    return 0;
-  }
-}
-
 async function mapListing(listing: RentcastListing): Promise<Property> {
   const address =
     listing.formattedAddress ??
     `${listing.addressLine1}, ${listing.city}, ${listing.state} ${listing.zipCode}`;
-  const [{ comps, marketValue }, rent] = await Promise.all([
-    fetchComps(address),
-    fetchRent(address),
-  ]);
+  const { comps, marketValue } = await fetchAvm(address);
 
   return {
     id: listing.id ?? address,
@@ -167,9 +157,6 @@ async function mapListing(listing: RentcastListing): Promise<Property> {
     listPrice: listing.price ?? marketValue ?? 0,
     daysOnMarket: listing.daysOnMarket ?? 0,
     status: "active",
-    // RentCast does not provide agent remarks; MLS will. Left blank so the
-    // remark-based deal-killer NLP simply has nothing to flag (age-based
-    // rehab inference still applies).
     listingRemarks: "",
     photos: [],
     priceHistory: mapHistory(listing),
@@ -182,13 +169,13 @@ async function mapListing(listing: RentcastListing): Promise<Property> {
     neighborhoodGrowth: 0,
     rentalDemand: 60,
     investorCompetition: 50,
-    estimatedRentMonthly: rent,
+    estimatedRentMonthly: 0, // filled by neighborhood enrichment via ZIP table
     firstSeen: new Date().toISOString(),
     lastScanned: new Date().toISOString(),
   };
 }
 
-// Lightweight distress inference from listing metadata available pre-MLS.
+// Lightweight distress inference from listing metadata (no extra API call).
 function deriveDistress(listing: RentcastListing): Property["distressSignals"] {
   const signals: Property["distressSignals"] = [];
   if ((listing.daysOnMarket ?? 0) >= 60) signals.push("long_dom");
@@ -200,23 +187,52 @@ function deriveDistress(listing: RentcastListing): Property["distressSignals"] {
   return signals;
 }
 
+// Pre-filter: discard listings that can't possibly fit the buy box before
+// spending AVM request budget on them.
+function passesPreFilter(
+  listing: RentcastListing,
+  params: ScanParams
+): boolean {
+  const price = listing.price ?? 0;
+  const beds = listing.bedrooms ?? 0;
+  const type = mapType(listing.propertyType);
+
+  // Hard price ceiling
+  if (params.maxPrice && price > params.maxPrice) return false;
+  // Skip anything without a price or sqft (incomplete data)
+  if (!price || !listing.squareFootage) return false;
+  // Must have at least 2 beds (single-room condos not in buy box)
+  if (beds < 2) return false;
+  // Skip multi-family — this investor targets 1-4 unit residential flips
+  if (type === "multi_family") return false;
+
+  return true;
+}
+
 export interface ScanParams {
   city?: string;
   state?: string;
   zipCode?: string;
   maxPrice?: number;
-  limit?: number;
+  // How many listings to pull from RentCast (1 request regardless of count).
+  fetchLimit?: number;
+  // How many survivors to enrich with AVM after pre-filtering (1 request each).
+  enrichLimit?: number;
 }
 
-// Pull active sale listings and enrich each with comps + rent. Returns mapped
-// Property[] ready for the analysis engine. Throws if RentCast isn't configured.
+// Pull active sale listings, pre-filter by buy box, then enrich survivors
+// with AVM + comps. Total requests = 1 + enrichLimit (default ≤10).
 export async function scanRentcast(params: ScanParams): Promise<Property[]> {
   if (!isRentcastConfigured()) {
     throw new Error("RentCast is not configured (set RENTCAST_API_KEY).");
   }
+
+  const fetchLimit = params.fetchLimit ?? 40; // cast wide net in 1 request
+  const enrichLimit = params.enrichLimit ?? 10; // AVM budget per scan
+
   const q = new URLSearchParams({
     status: "Active",
-    limit: String(params.limit ?? 20),
+    limit: String(fetchLimit),
   });
   if (params.city) q.set("city", params.city);
   if (params.state) q.set("state", params.state);
@@ -230,9 +246,15 @@ export async function scanRentcast(params: ScanParams): Promise<Property[]> {
     throw new Error(`RentCast listings error: ${res.status} ${res.statusText}`);
   }
   const listings = (await res.json()) as RentcastListing[];
-  // Enrich sequentially-ish but bounded to avoid rate limits.
+
+  // Pre-filter before spending any AVM requests.
+  const candidates = listings
+    .filter((l) => passesPreFilter(l, params))
+    .slice(0, enrichLimit);
+
+  // Enrich survivors sequentially to stay under the 20 req/sec rate limit.
   const out: Property[] = [];
-  for (const listing of listings) {
+  for (const listing of candidates) {
     out.push(await mapListing(listing));
   }
   return out;

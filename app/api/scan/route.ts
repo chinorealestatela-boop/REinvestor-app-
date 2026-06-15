@@ -31,7 +31,8 @@ export async function POST(req: NextRequest) {
       state?: string;
       zipCode?: string;
       maxPrice?: number;
-      limit?: number;
+      fetchLimit?: number;
+      enrichLimit?: number;
     };
 
     const rawProperties = await scanRentcast({
@@ -39,7 +40,8 @@ export async function POST(req: NextRequest) {
       state: body.state ?? "NV",
       zipCode: body.zipCode,
       maxPrice: body.maxPrice ?? 500_000,
-      limit: body.limit ?? 20,
+      fetchLimit: body.fetchLimit ?? 40,  // 1 request for up to 40 listings
+      enrichLimit: body.enrichLimit ?? 10, // AVM budget: 10 requests max
     });
 
     // Enrich each property with real crime, school, flood zone, and growth data.
